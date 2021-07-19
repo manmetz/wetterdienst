@@ -5,6 +5,7 @@ import bz2
 import gzip
 import logging
 import tarfile
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
@@ -13,7 +14,9 @@ from typing import Generator, Optional
 import pandas as pd
 from fsspec.implementations.tar import TarFileSystem
 
+from wetterdienst.eccodes import ensure_eccodes
 from wetterdienst.exceptions import FailedDownload
+from wetterdienst.metadata.columns import Columns
 from wetterdienst.metadata.extension import Extension
 from wetterdienst.metadata.period import Period
 from wetterdienst.metadata.resolution import Resolution
@@ -31,10 +34,25 @@ from wetterdienst.provider.dwd.radar.metadata import (
 )
 from wetterdienst.provider.dwd.radar.sites import DwdRadarSite
 from wetterdienst.provider.dwd.radar.util import get_date_from_filename, verify_hdf5
+from wetterdienst.settings import Settings
 from wetterdienst.util.cache import CacheExpiry
 from wetterdienst.util.network import download_file
 
 log = logging.getLogger(__name__)
+
+ECCODES_FOUND = ensure_eccodes()
+
+if ECCODES_FOUND:
+    log.info("eccodes was found. data of bufr files will be read into pandas.DataFrame stored at result.df")
+    import pdbufr
+
+
+BUFR_PARAMETER_MAPPING = {
+    DwdRadarParameter.PE_ECHO_TOP: ["projectionType", "pictureType", "echoTops"],
+    DwdRadarParameter.PG_REFLECTIVITY: ["horizontalReflectivity"],
+    DwdRadarParameter.LMAX_VOLUME_SCAN: ["horizontalReflectivity"],
+    DwdRadarParameter.PX250_REFLECTIVITY: ["horizontalReflectivity"],
+}
 
 
 @dataclass
@@ -45,6 +63,8 @@ class RadarResult:
     """
 
     data: BytesIO
+    # placeholder for bufr files, which are read into pandas.DataFrame if eccodes available
+    df: pd.DataFrame = pd.DataFrame()
     timestamp: datetime = None
     url: str = None
     filename: str = None
@@ -96,7 +116,6 @@ def collect_radar_data(
 
     :return:                ``RadarResult`` item
     """
-
     # Find latest file.
     if start_date == DwdRadarDate.LATEST:
 
@@ -201,6 +220,57 @@ def collect_radar_data(
                     for result in _download_generic_data(url=url):
                         if result.timestamp is None:
                             result.timestamp = date_time
+
+                        if fmt == DwdRadarDataFormat.BUFR:
+                            if ECCODES_FOUND and Settings.read_bufr:
+                                buffer = result.data
+
+                                # TODO: pdbufr currently doesn't seem to allow reading directly from BytesIO
+                                tf = tempfile.NamedTemporaryFile("w+b")
+                                tf.write(buffer.read())
+                                tf.seek(0)
+
+                                df = pdbufr.read_bufr(
+                                    tf.name,
+                                    columns=(
+                                        "stationNumber",
+                                        "latitude",
+                                        "longitude",
+                                        "heightOfStation",
+                                        "year",
+                                        "month",
+                                        "day",
+                                        "hour",
+                                        "minute",
+                                        *BUFR_PARAMETER_MAPPING[parameter],
+                                    ),
+                                )
+
+                                tf.close()
+
+                                df = df.rename(
+                                    columns={
+                                        "stationNumber": Columns.STATION_ID.value,
+                                        "latitude": Columns.LATITUDE.value,
+                                        "longitude": Columns.LONGITUDE.value,
+                                        "heightOfStation": Columns.HEIGHT.value,
+                                        BUFR_PARAMETER_MAPPING[parameter]: BUFR_PARAMETER_MAPPING[parameter].lower(),
+                                    }
+                                )
+
+                                df[Columns.STATION_ID.value] = df[Columns.STATION_ID.value].astype(int).astype(str)
+
+                                date_columns = ["year", "month", "day", "hour", "minute"]
+                                dates = df.loc[:, date_columns].apply(
+                                    lambda x: datetime(
+                                        year=x.year, month=x.month, day=x.day, hour=x.hour, minute=x.minute
+                                    ),
+                                    axis=1,
+                                )
+                                df.insert(len(df.columns) - 1, Columns.DATE.value, dates)
+                                df = df.drop(columns=date_columns)
+
+                                result.df = df
 
                         if verify:
                             if fmt == DwdRadarDataFormat.HDF5:

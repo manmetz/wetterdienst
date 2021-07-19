@@ -12,6 +12,7 @@ import pytest
 import requests
 import wradlib as wrl
 
+from wetterdienst.eccodes import ensure_eccodes
 from wetterdienst.provider.dwd.radar import (
     DwdRadarDataFormat,
     DwdRadarDataSubset,
@@ -518,6 +519,53 @@ def test_radar_request_site_historic_pe_bufr():
     decoder = pybufrkit.decoder.Decoder()
     decoder.process(payload, info_only=True)
 
+    assert not results[0].df.dropna().empty
+
+    assert results[0].df.columns == []
+
+
+@pytest.mark.remote
+@pytest.mark.skipif(not ensure_eccodes(), reason="eccodes required for pdbufr library")
+def test_radar_request_site_historic_pe_bufr_dataframe():
+    """
+    Verify acquisition of radar/site/PE_ECHO_TOP data works
+    when using a specific date.
+
+    This time, we will use the BUFR data format.
+    """
+
+    # Acquire data from yesterday at this time.
+    timestamp = datetime.utcnow() - timedelta(days=1)
+
+    request = DwdRadarValues(
+        parameter=DwdRadarParameter.PE_ECHO_TOP,
+        start_date=timestamp,
+        site=DwdRadarSite.BOO,
+        fmt=DwdRadarDataFormat.BUFR,
+    )
+
+    results = list(request.query())
+
+    if len(results) == 0:
+        raise pytest.skip("Data currently not available")
+
+    df = results[0].df
+
+    assert not df.empty
+
+    assert df.columns.tolist() == [
+        "station_id",
+        "latitude",
+        "longitude",
+        "height",
+        "projectionType",
+        "pictureType",
+        "date",
+        "echotops",
+    ]
+
+    assert not df.dropna().empty
+
 
 @pytest.mark.remote
 @pytest.mark.parametrize(
@@ -560,7 +608,12 @@ def test_radar_request_site_historic_pe_timerange(fmt):
 
     assert len(results) >= 1
 
-    # TODO: Verify data.
+    first = results[0]
+
+    if fmt == DwdRadarDataFormat.BUFR:
+        assert not first.df.dropna().empty
+
+        assert first.df.columns == [""]
 
 
 @pytest.mark.xfail
@@ -629,7 +682,9 @@ def test_radar_request_site_historic_px250_bufr_timerange():
 
     assert len(results) == 12
 
-    # TODO: Verify data.
+    first = results[0]
+
+    assert not first.df.dropna().empty
 
 
 @pytest.mark.remote

@@ -1,3 +1,4 @@
+import pathlib
 from contextvars import ContextVar
 from dataclasses import dataclass
 
@@ -15,11 +16,18 @@ class Settings:
         # cache
         cache_disable: bool = env.bool("CACHE_DISABLE", False)
 
+        # eccodes
+        eccodes_dir: pathlib.Path = env.path("ECCODES_DIR", None)
+
         with env.prefixed("SCALAR_"):
             # scalar
             humanize: bool = env.bool("HUMANIZE", True)
             tidy: bool = env.bool("TIDY", True)
             si_units: bool = env.bool("SI_UNITS", True)
+
+        with env.prefixed("RADAR_"):
+            # radar related
+            read_bufr: bool = env.bool("READ_BUFR", True)
 
     @classmethod
     def reset(cls):

@@ -4,6 +4,8 @@ Changelog
 Development
 ***********
 
+- Radar: read bufr data into pandas.DataFrame when eccodes library is provided
+
 0.32.0 (24.04.2022)
 *******************
 
@@ -111,6 +113,7 @@ Features
 
 - Enable selecting a parameter precisely from a dataset by passing a tuple like [("precipitation_height", "kl")] or
   [("precipitation_height", "precipitation_more")], or for cli/restapi use "precipitation_height/kl"
+- Allow parsing DWD radar data in bufr format to a pandas DataFrame
 
 - Rename wetterdienst show to wetterdienst info, make version accessible via cli with
   wetterdienst version

@@ -48,6 +48,13 @@ jobs:
         path: .venv
         key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}-${{ env.CACHE_NUMBER }}
 
+    - name: Install eccodes (Mac only)
+      run: |
+        if [ "$RUNNER_OS" == "macOS" ]; then
+             brew install eccodes && export WD_ECCODES_DIR=$(brew --prefix eccodes)
+        fi
+      shell: bash
+
     - name: Install dependencies
       run: .github/workflows/install.sh testing
       if: steps.poetry-cache-flag.outputs.cache-hit != 'true'
