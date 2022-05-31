@@ -48,3 +48,4 @@ class Provider(Enum):
         "© Environment Agency of UK",
         "https://environment.data.gov.uk/hydrology/",
     )
+    IMGW = ()
