@@ -354,7 +354,7 @@ class ScalarValuesCore(metaclass=ABCMeta):
 
             return df
         else:
-            parameter = pd.Series(parameter).map(lambda x: x.value).tolist()
+            parameter = pd.Series(parameter).map(lambda x: x.value.lower()).tolist()
             # Base columns
             columns = [Columns.STATION_ID.value, Columns.DATE.value, *parameter]
 
@@ -386,7 +386,7 @@ class ScalarValuesCore(metaclass=ABCMeta):
             )
 
             if self.sr.tidy:
-                df.loc[:, Columns.PARAMETER.value] = parameter.value
+                df.loc[:, Columns.PARAMETER.value] = parameter.value.lower()
                 df.loc[:, Columns.PARAMETER.value] = pd.Categorical(df.loc[:, Columns.PARAMETER.value])
 
             return df
@@ -473,9 +473,6 @@ class ScalarValuesCore(metaclass=ABCMeta):
                 if self.sr.tidy:
                     if not self.sr._has_tidy_data:
                         parameter_df = self.tidy_up_df(parameter_df, dataset)
-
-                    if Columns.PARAMETER.value not in parameter_df:
-                        parameter_df[Columns.PARAMETER.value] = parameter.value.lower()
 
                     if parameter != dataset:
                         parameter_df = parameter_df.loc[
